@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Qua Đường: Hậu Tận Thế</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; overflow: hidden;
+    background: #000; color: #fff; font-family: 'Courier New', monospace;
+  }
+  #story, #gameOver, #nextLevel {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: radial-gradient(circle at center, rgba(40,0,0,0.8), rgba(0,0,0,0.95));
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    text-align: center; padding: 40px; overflow: hidden;
+  }
+  #story p {
+    max-width: 700px; line-height: 1.6; font-size: 18px;
+    margin-bottom: 20px; white-space: pre-line;
+  }
+  #story button, #gameOver button, #nextLevel button {
+    background: crimson; color: white; border: none; padding: 12px 30px;
+    font-size: 18px; cursor: pointer; border-radius: 5px;
+    transition: 0.3s;
+  }
+  #story button:hover, #gameOver button:hover, #nextLevel button:hover {
+    background: orange;
+  }
+  #gameCanvas {
+    background: linear-gradient(to top, #333, #666);
+    display: block; margin: 0 auto;
+  }
+  #scoreboard {
+    position: absolute; top: 10px; left: 10px;
+    font-size: 20px; font-weight: bold;
+  }
+  #muteBtn {
+    position: absolute; top: 10px; right: 10px;
+    background: transparent; border: 2px solid #fff;
+    color: #fff; padding: 5px 15px; cursor: pointer;
+    border-radius: 5px; transition: 0.3s;
+  }
+  #muteBtn:hover { background: rgba(255,255,255,0.2); }
+
+  /* 🌫️ Mưa tro */
+  .ash {
+    position: absolute;
+    width: 2px; height: 6px;
+    background: rgba(255,255,255,0.4);
+    animation: fall linear forwards;
+  }
+  @keyframes fall {
+    from { transform: translateY(-10px) rotate(0deg); opacity: 1; }
+    to { transform: translateY(110vh) rotate(360deg); opacity: 0; }
+  }
+
+  /* ⚡ Ánh sáng chớp */
+  .flash {
+    position: absolute;
+    top:0; left:0; width:100%; height:100%;
+    background: radial-gradient(circle, rgba(255,0,0,0.3) 0%, rgba(0,0,0,0.9) 80%);
+    animation: flashAnim 5s infinite;
+    pointer-events: none;
+  }
+  @keyframes flashAnim {
+    0%, 95%, 100% { opacity: 0; }
+    50% { opacity: 0.6; }
+  }
+</style>
+</head>
+<body>
+  <div id="story">
+    <div class="flash"></div>
+    <h1>🌒 Qua Đường: Hậu Tận Thế 🌒</h1>
+    <p id="storyText"></p>
+    <button id="startBtn" style="display:none;">Bắt đầu hành trình</button>
+  </div>
+
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <div id="scoreboard">Điểm: 0 | Màn: 1</div>
+  <button id="muteBtn">🔊</button>
+
+  <div id="gameOver" style="display:none;">
+    <h2>💀 Bạn đã gục ngã giữa tro tàn 💀</h2>
+    <button id="retryBtn">Chơi lại</button>
+  </div>
+
+  <div id="nextLevel" style="display:none;">
+    <h2>🔥 Bạn đã vượt qua màn này! 🔥</h2>
+    <button id="nextBtn">Tiếp tục</button>
+  </div>
+
+<script>
+// ================== ÂM THANH ==================
+// 👉 Bạn chỉ cần đổi đường dẫn tới file mp3 của bạn ở đây:
+const storyMusic = new Audio("storybg.mp3");       // nhạc phần cốt truyện
+const gameMusic = new Audio("game.mp3");         // nhạc khi chơi
+const gameOverSound = new Audio("gameover.mp3"); // âm thanh khi thua
+const levelUpSound = new Audio("levelup.mp3");   // âm thanh qua màn
+
+storyMusic.loop = true;
+gameMusic.loop = true;
+
+let muted = false;
+const muteBtn = document.getElementById("muteBtn");
+muteBtn.onclick = () => {
+  muted = !muted;
+  [storyMusic, gameMusic, gameOverSound, levelUpSound].forEach(a => a.muted = muted);
+  muteBtn.textContent = muted ? "🔇" : "🔊";
+};
+
+// ================== CỐT TRUYỆN HIỆU ỨNG ==================
+const storyText = document.getElementById("storyText");
+const storyContent = `
+Một buổi sáng tưởng chừng bình yên,
+bầu trời bỗng nhuộm đỏ rực như máu.
+
+Các trạm quan sát khẩn cấp phát cảnh báo:
+một thiên thạch khổng lồ đang lao thẳng về Trái Đất.
+
+Tiếng còi báo động vang lên chói tai,
+người dân hoảng loạn bỏ chạy,
+đường phố ngập trong âm thanh hỗn loạn.
+
+Khi thiên thạch chạm đất,
+thành phố tan biến trong khoảnh khắc.
+
+Trong đống tro tàn, bạn – một người sống sót –
+phải băng qua con đường đổ nát
+để tìm đến hầm trú ẩn cuối cùng...`;
+
+let storyIndex = 0;
+function typeStory() {
+  if (storyIndex < storyContent.length) {
+    storyText.textContent += storyContent[storyIndex];
+    storyIndex++;
+    setTimeout(typeStory, 40);
+  } else document.getElementById("startBtn").style.display = "block";
+}
+
+// ⚠️ chỉ phát nhạc sau khi người chơi click, để tránh bị chặn
+window.addEventListener("click", ()=>{ 
+  storyMusic.play().catch(()=>{}); 
+}, {once:true});
+
+typeStory();
+
+// 🌫️ Tạo hiệu ứng tro bụi
+function createAsh() {
+  const ash = document.createElement("div");
+  ash.classList.add("ash");
+  ash.style.left = Math.random()*100 + "vw";
+  ash.style.animationDuration = (3 + Math.random()*4) + "s";
+  document.getElementById("story").appendChild(ash);
+  setTimeout(()=>ash.remove(), 7000);
+}
+setInterval(createAsh, 100);
+
+// ================== GAME CORE ==================
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+const scoreEl = document.getElementById("scoreboard");
+const story = document.getElementById("story");
+const gameOver = document.getElementById("gameOver");
+const nextLevel = document.getElementById("nextLevel");
+const startBtn = document.getElementById("startBtn");
+const retryBtn = document.getElementById("retryBtn");
+const nextBtn = document.getElementById("nextBtn");
+
+let player, cars, level, score, gameRunning, speedMultiplier;
+
+function initGame(lv=1) {
+  player = {x: canvas.width/2-20, y: canvas.height-60, w: 40, h: 40, color: "#0f0"};
+  cars = [];
+  level = lv;
+  score = 0;
+  gameRunning = true;
+  speedMultiplier = 1 + (level-1)*0.4;
+  spawnCars();
+  loop();
+}
+
+function spawnCars() {
+  cars = [];
+  for (let i=0; i<5+level; i++) {
+    let yPos = i*100+50;
+    if (yPos > canvas.height - 150) continue;
+    cars.push({
+      x: Math.random()*canvas.width,
+      y: yPos,
+      w: 60, h: 40,
+      speed: (Math.random()*2+2)*speedMultiplier,
+      dir: Math.random() > 0.5 ? 1 : -1,
+      color: "hsl(" + Math.random()*360 + ",80%,50%)"
+    });
+  }
+}
+
+function drawPlayer() {
+  ctx.fillStyle = player.color;
+  ctx.fillRect(player.x, player.y, player.w, player.h);
+}
+function drawCars() {
+  cars.forEach(car => {
+    ctx.fillStyle = car.color;
+    ctx.fillRect(car.x, car.y, car.w, car.h);
+  });
+}
+function moveCars() {
+  cars.forEach(car => {
+    car.x += car.speed * car.dir;
+    if (car.x > canvas.width+60) car.x = -60;
+    if (car.x < -60) car.x = canvas.width+60;
+  });
+}
+function checkCollisions() {
+  for (let car of cars) {
+    if (player.x < car.x+car.w && player.x+player.w > car.x &&
+        player.y < car.y+car.h && player.y+player.h > car.y) {
+      endGame();
+    }
+  }
+}
+function endGame() {
+  gameRunning = false;
+  gameMusic.pause();
+  gameOverSound.play();
+  gameOver.style.display = "flex";
+}
+function nextLevelScreen() {
+  gameRunning = false;
+  gameMusic.pause();
+  levelUpSound.play();
+  nextLevel.style.display = "flex";
+}
+function loop() {
+  if (!gameRunning) return;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = "#111";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  moveCars();
+  drawCars();
+  drawPlayer();
+  checkCollisions();
+  if (player.y <= 0) nextLevelScreen();
+  score++;
+  scoreEl.textContent = `Điểm: ${score} | Màn: ${level}`;
+  requestAnimationFrame(loop);
+}
+
+// ================== ĐIỀU KHIỂN ==================
+document.addEventListener("keydown", e => {
+  if (!gameRunning) return;
+  const step = 40;
+  if (e.key === "ArrowUp") player.y -= step;
+  if (e.key === "ArrowDown") player.y += step;
+  if (e.key === "ArrowLeft") player.x -= step;
+  if (e.key === "ArrowRight") player.x += step;
+  player.x = Math.max(0, Math.min(canvas.width - player.w, player.x));
+  player.y = Math.max(0, Math.min(canvas.height - player.h, player.y));
+});
+
+// ================== NÚT BẮT ĐẦU / CHƠI LẠI ==================
+startBtn.onclick = () => {
+  story.style.display = "none";
+  storyMusic.pause();
+  gameMusic.currentTime = 0;
+  gameMusic.play();
+  initGame(1);
+};
+retryBtn.onclick = () => {
+  gameOver.style.display = "none";
+  gameMusic.currentTime = 0;
+  gameMusic.play();
+  initGame(1);
+};
+nextBtn.onclick = () => {
+  nextLevel.style.display = "none";
+  gameMusic.currentTime = 0;
+  gameMusic.play();
+  initGame(level+1);
+};
+</script>
+</body>
+</html>
